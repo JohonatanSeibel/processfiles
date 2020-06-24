@@ -23,7 +23,7 @@ import ch.qos.logback.classic.Logger;
 
 public class ResultServiceImpl implements ResultService{
 	
-	private static final String PATH_OUT = System.getenv("HOME") + "/data/out/";
+	private static final String PATH_OUT = System.getenv("HOMEPATH") + "/data/out/";
 	private static final Logger LOG = (Logger) LoggerFactory.getLogger(ProcessFileService.class);
 	private String lessProductiveSaller;
 	private Long mostExpresiveSale;
@@ -58,6 +58,9 @@ public class ResultServiceImpl implements ResultService{
 			
 			this.setMostExpresiveSale(resultOrder.keySet().iterator().next());
 			this.writeReturn(quantitySellers, quantityClients);
+		} else if (quantitySellers >= 1 || quantityClients >= 1) {
+			this.setLessProductiveSaller(" -- ");
+			this.writeReturn(quantitySellers, quantityClients);
 		}
 	}
 
@@ -70,8 +73,9 @@ public class ResultServiceImpl implements ResultService{
 
 			fileWriter.write("Quantidade de clientes no arquivo de entrada: " + quantityClients + "\r\n"
 					+ "Quantidade de vendedor no arquivo de entrada: " + quantitySellers + "\r\n"
-					+ "ID da venda mais cara: " + this.getMostExpresiveSale() + "\r\n" + "Pior Vendedor: "
-					+ this.getLessProductiveSaller());
+					+ "ID da venda mais cara: "
+					+ (this.getMostExpresiveSale() != null ? this.getMostExpresiveSale() : " -- ") + "\r\n"
+					+ "Pior Vendedor: " + this.getLessProductiveSaller());
 			fileWriter.close();
 			LOG.info("Successfully created file: " + date + ".done.dat");
 		} catch (IOException e) {

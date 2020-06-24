@@ -11,7 +11,9 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.slf4j.LoggerFactory;
@@ -51,12 +53,14 @@ public class ProcessFileServiceImpl implements ProcessFileService {
 	private List<Client> listClient;
 	private List<Salesman> listSalesman;
 	private List<Order> listOrder;
+	private Map<Long, String> salesmanToOrder;
 
 	@Override
 	public void launcher() throws IOException {
 		this.listClient = new ArrayList<Client>();
 		this.listSalesman = new ArrayList<Salesman>();
 		this.listOrder = new ArrayList<Order>();
+		this.salesmanToOrder = new HashMap<Long, String>();
 		File folder = new File(PATH_IN);
 		try {
 			this.queryDirectoryFiles(folder);
@@ -99,11 +103,33 @@ public class ProcessFileServiceImpl implements ProcessFileService {
 			}
 		}
 		if (folder.listFiles().length != 0) {
+			includeSalesmanSale();
 			resultService.processResultSale(this.getListSalesman().size(), this.getListOrder(),
 					this.getListClient().size());
 		} else {
 			cleanDirectoryOut();
 		}
+	}
+	
+	private void includeSalesmanSale() {
+		List<Order> listOrderToRemove = new ArrayList<Order>();
+		for(Order order : getListOrder()) {
+			if(order.getSalesman() == null) {
+				String salesmanName = getSalesmanToOrder().get(order.getId());
+				Salesman salesman;
+				try {
+					salesman = this.findSalesman(salesmanName, null).get();
+					if(salesman != null)
+						order.setSalesman(salesman);
+				} catch (Exception e) {
+					listOrderToRemove.add(order);
+					LOG.info("The Salesman " + salesmanName + " don't exist, the order "+ order.getId()+" is are removed!");
+					continue;
+				}
+			}
+		}
+		if(listOrderToRemove.size() > 0)
+			this.getListOrder().removeAll(listOrderToRemove);
 	}
 
 	private void cleanDirectoryOut() {
@@ -123,38 +149,53 @@ public class ProcessFileServiceImpl implements ProcessFileService {
 			String line = "";
 			while ((line = bufferedReader.readLine()) != null) {
 				if (line.contains("001ç")) {
-					if (!findSalesman(null, getDataByIndex(line, 1)).isPresent()) {
-						this.getListSalesman().add(this.salesmanService.getSalesmanByLine(line));
-					} else {
-						LOG.warn("Salesman with this cpf(" + getDataByIndex(line, 1) + ") already exists!");
-					}
+					processSalesmanLine(line);
 				} else if (line.contains("002ç")) {
-					if (!findClient(getDataByIndex(line, 1)).isPresent()) {
-						this.getListClient().add(this.clientService.getClientByLine(line));
-					} else {
-						LOG.warn("Client with this cnpj(" + getDataByIndex(line, 1) + ") already exists!");
-					}
+					processClientLine(line);
 				} else if (line.contains("003ç")) {
-					if (!findOrder(Long.valueOf(getDataByIndex(line, 1))).isPresent()) {
-						String salesmanName = getDataByIndex(line, 3);
-						Salesman salesman;
-						try {
-							salesman = this.findSalesman(salesmanName, null).get();
-						} catch (Exception e) {
-							salesman = null;
-							LOG.info("The Salesman " + salesmanName + " don't exist!");
-							continue;
-						}
-						Order order = orderService.getOrderByLine(line, salesman);
-						this.getListOrder().add(order);
-					} else {
-						LOG.warn("Order with this ID(" + getDataByIndex(line, 1) + ") already exists!");
-					}
+					processOrderLine(line);
 				}
 			}
 			bufferedReader.close();
 		} catch (IOException e) {
 			LOG.warn("Error to load files!");
+		}
+	}
+	
+	private void processSalesmanLine(String line) {
+		if (!findSalesman(null, getDataByIndex(line, 1)).isPresent()) {
+			this.getListSalesman().add(this.salesmanService.getSalesmanByLine(line));
+		} else {
+			LOG.warn("Salesman with this cpf(" + getDataByIndex(line, 1) + ") already exists!");
+		}
+	}
+	
+	private void processClientLine(String line) {
+		if (!findClient(getDataByIndex(line, 1)).isPresent()) {
+			this.getListClient().add(this.clientService.getClientByLine(line));
+		} else {
+			LOG.warn("Client with this cnpj(" + getDataByIndex(line, 1) + ") already exists!");
+		}
+	}
+	
+	private void processOrderLine(String line) {
+		if (!findOrder(Long.valueOf(getDataByIndex(line, 1))).isPresent()) {
+			String salesmanName = getDataByIndex(line, 3);
+			Salesman salesman;
+			Order order;
+			try {
+				salesman = this.findSalesman(salesmanName, null).get();
+				if(salesman != null) {
+					order = orderService.getOrderByLine(line, salesman);
+					this.getListOrder().add(order);
+				}
+			}catch (Exception e) {
+				order = orderService.getOrderByLine(line, null);
+				this.getSalesmanToOrder().put(order.getId(), salesmanName);
+				this.getListOrder().add(order);
+			}	
+		} else {
+			LOG.warn("Order with this ID(" + getDataByIndex(line, 1) + ") already exists!");
 		}
 	}
 
@@ -201,4 +242,13 @@ public class ProcessFileServiceImpl implements ProcessFileService {
 	public void setListOrder(List<Order> listOrder) {
 		this.listOrder = listOrder;
 	}
+
+	public Map<Long, String> getSalesmanToOrder() {
+		return salesmanToOrder;
+	}
+
+	public void setSalesmanToOrder(Map<Long, String> salesmanToOrder) {
+		this.salesmanToOrder = salesmanToOrder;
+	}
+	
 }
